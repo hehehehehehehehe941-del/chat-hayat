@@ -4,25 +4,11 @@ const starterMessages = [
   { id: 1, role: 'assistant', text: 'Привет! Я Nova, твой AI-помощник. Чем могу помочь сегодня?', time: '10:42' },
 ]
 
-const answers = {
-  hello: ['Привет! Рад тебя видеть. Что сегодня будем разбирать?', 'Привет! Я на связи. Можем обсудить идею, код или составить план.', 'Здравствуйте! Чем займёмся: решим задачу или придумаем что-то новое?'],
-  code: ['Конечно. Пришли код и опиши ожидаемый результат, а я найду проблему по шагам.', 'Давай разберёмся с кодом. Особенно полезны текст ошибки и небольшой фрагмент вокруг неё.', 'Помогу. Сначала уточним цель, затем найдём причину и соберём аккуратное исправление.'],
-  sudoku: ['Для Sudoku могу подсказать следующий ход или объяснить стратегию. Какой уровень сложности тебе интересен?', 'Могу помочь решить Sudoku без угадывания: посмотрим кандидатов, строки, столбцы и блоки.', 'Давай разберём головоломку. Пришли поле или скажи, нужна подсказка, решение или новый уровень.'],
-  plan: ['Соберём понятный план: цель, приоритеты и одно ближайшее действие. Что нужно успеть?', 'Давай превратим задачу в несколько коротких шагов. Расскажи, с чего начинаем.', 'Предлагаю начать с результата, которого ты хочешь достичь, и ограничений по времени.'],
-  default: ['Интересная мысль. Могу разложить её на части и предложить несколько практичных вариантов.', 'Понял. Давай уточним контекст, чтобы ответ получился действительно полезным.', 'Здесь есть несколько подходов. Расскажи немного больше, и я помогу выбрать лучший.', 'Хороший вопрос. Начнём с главного: какой результат ты хочешь получить?'],
-}
-
-function getAnswer(text, messageCount) {
-  const value = text.toLowerCase()
-  const topic = /привет|здравств|hello|hi/.test(value) ? 'hello' : /код|react|javascript|ошиб|code/.test(value) ? 'code' : /sudoku|судоку|головолом/.test(value) ? 'sudoku' : /план|сплан|задач|организ/.test(value) ? 'plan' : 'default'
-  const options = answers[topic]
-  return options[messageCount % options.length]
-}
-
 function App() {
   const [messages, setMessages] = useState(starterMessages)
   const [input, setInput] = useState('')
   const [isThinking, setIsThinking] = useState(false)
+  const [error, setError] = useState('')
   const [activeChat, setActiveChat] = useState('Новый разговор')
   const endRef = useRef(null)
 
@@ -33,17 +19,29 @@ function App() {
     if (!text || isThinking) return
     setMessages((current) => [...current, { id: Date.now(), role: 'user', text, time: 'сейчас' }])
     setInput('')
+    setError('')
     setIsThinking(true)
-    window.setTimeout(() => {
-      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', text: getAnswer(text, current.length), time: 'сейчас' }])
+    fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [...messages.map(({ role, text: messageText }) => ({ role, content: messageText })), { role: 'user', content: text }] }),
+    }).then(async (response) => {
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'Не удалось получить ответ')
+      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', text: data.message, time: 'сейчас' }])
+    }).catch((requestError) => {
+      setError(requestError.message)
+      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', text: 'Не получилось подключиться к AI. Проверьте настройки Groq.', time: 'сейчас' }])
+    }).finally(() => {
       setIsThinking(false)
-    }, 650)
+    })
   }
 
   const newChat = () => {
     setMessages(starterMessages)
     setInput('')
     setActiveChat('Новый разговор')
+    setError('')
   }
 
   return (
@@ -68,7 +66,7 @@ function App() {
             <div ref={endRef}></div>
           </div>
         </section>
-        <div className="composer-area"><div className="suggestions"><button onClick={() => sendMessage('Помоги мне составить план на сегодня')}>Составить план <span>↗</span></button><button onClick={() => sendMessage('Объясни сложную тему простыми словами')}>Объяснить тему <span>↗</span></button><button onClick={() => sendMessage('Помоги с кодом React')}>Помочь с кодом <span>↗</span></button></div><div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() } }} placeholder="Напишите сообщение..." rows="1" /><div className="composer-tools"><button title="Прикрепить файл">＋</button><span>Enter для отправки</span><button className="send-button" onClick={() => sendMessage()} disabled={!input.trim() || isThinking} title="Отправить">↑</button></div></div><p className="disclaimer">Nova может допускать ошибки. Проверяйте важную информацию.</p></div>
+        <div className="composer-area"><div className="suggestions"><button onClick={() => sendMessage('Помоги мне составить план на сегодня')}>Составить план <span>↗</span></button><button onClick={() => sendMessage('Объясни сложную тему простыми словами')}>Объяснить тему <span>↗</span></button><button onClick={() => sendMessage('Помоги с кодом React')}>Помочь с кодом <span>↗</span></button></div>{error && <p className="api-error">{error}</p>}<div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() } }} placeholder="Напишите сообщение..." rows="1" /><div className="composer-tools"><button title="Прикрепить файл">＋</button><span>Enter для отправки</span><button className="send-button" onClick={() => sendMessage()} disabled={!input.trim() || isThinking} title="Отправить">↑</button></div></div><p className="disclaimer">Nova может допускать ошибки. Проверяйте важную информацию.</p></div>
       </main>
     </div>
   )
