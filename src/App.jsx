@@ -1,130 +1,77 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 
-const PUZZLES = [
-  {
-    puzzle: '530070000600195000098000060800060003400803001700020006060000280000419005000080079',
-    solution: '534678912672195348198342567859761423426853791713924856961537284287419635345286179',
-  },
-  {
-    puzzle: '009000000080605020501078000000000700706040102003000000000720908090301070000000400',
-    solution: '329416857487695321561378249142983765756249183813567492674728936298354671935162478',
-  },
-  {
-    puzzle: '000260701680070090190004500820100040004602900050003028009300074040050036703018000',
-    solution: '435269781682571493197834562826195347374682915951743628519326874248957136763418259',
-  },
+const starterMessages = [
+  { id: 1, role: 'assistant', text: 'Привет! Я Nova, твой AI-помощник. Чем могу помочь сегодня?', time: '10:42' },
 ]
 
-const toGrid = (value) => value.split('').map(Number)
-const formatTime = (seconds) => `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
+const answers = {
+  hello: 'Привет! Рад тебя видеть. Могу помочь с идеями, текстами, кодом, планированием и объяснением сложных тем.',
+  code: 'Конечно. Опиши задачу, пришли фрагмент кода и напиши, какой результат ожидаешь. Я разберу проблему по шагам.',
+  sudoku: 'Для Sudoku могу подсказать следующий ход, объяснить стратегию или сгенерировать новую головоломку. Какой уровень сложности выбрать?',
+  plan: 'Давай соберём план: цель, текущая точка, ограничения и ближайшее действие. Напиши, над чем работаешь.',
+  default: 'Интересный вопрос. Я могу разобрать его по шагам, предложить несколько вариантов и помочь выбрать самый практичный. Расскажи немного больше.',
+}
+
+function getAnswer(text) {
+  const value = text.toLowerCase()
+  if (/привет|здравств|hello|hi/.test(value)) return answers.hello
+  if (/код|react|javascript|ошиб|code/.test(value)) return answers.code
+  if (/sudoku|судоку|головолом/.test(value)) return answers.sudoku
+  if (/план|сплан|задач|организ/.test(value)) return answers.plan
+  return answers.default
+}
 
 function App() {
-  const [puzzleIndex, setPuzzleIndex] = useState(0)
-  const [board, setBoard] = useState(() => toGrid(PUZZLES[0].puzzle))
-  const [selected, setSelected] = useState(null)
-  const [mistakes, setMistakes] = useState(0)
-  const [seconds, setSeconds] = useState(0)
-  const [message, setMessage] = useState('Select a square to begin')
-  const [complete, setComplete] = useState(false)
+  const [messages, setMessages] = useState(starterMessages)
+  const [input, setInput] = useState('')
+  const [isThinking, setIsThinking] = useState(false)
+  const [activeChat, setActiveChat] = useState('Новый разговор')
+  const endRef = useRef(null)
 
-  const currentPuzzle = PUZZLES[puzzleIndex]
-  const givens = useMemo(() => toGrid(currentPuzzle.puzzle), [currentPuzzle])
-  const solution = useMemo(() => toGrid(currentPuzzle.solution), [currentPuzzle])
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages, isThinking])
 
-  useEffect(() => {
-    if (complete) return undefined
-    const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000)
-    return () => window.clearInterval(timer)
-  }, [complete])
-
-  const newGame = () => {
-    const nextIndex = (puzzleIndex + 1) % PUZZLES.length
-    setPuzzleIndex(nextIndex)
-    setBoard(toGrid(PUZZLES[nextIndex].puzzle))
-    setSelected(null)
-    setMistakes(0)
-    setSeconds(0)
-    setMessage('Select a square to begin')
-    setComplete(false)
+  const sendMessage = (preset) => {
+    const text = (preset || input).trim()
+    if (!text || isThinking) return
+    setMessages((current) => [...current, { id: Date.now(), role: 'user', text, time: 'сейчас' }])
+    setInput('')
+    setIsThinking(true)
+    window.setTimeout(() => {
+      setMessages((current) => [...current, { id: Date.now() + 1, role: 'assistant', text: getAnswer(text), time: 'сейчас' }])
+      setIsThinking(false)
+    }, 650)
   }
 
-  const chooseNumber = (number) => {
-    if (selected === null || givens[selected] !== 0 || complete) return
-    if (number === solution[selected]) {
-      const nextBoard = [...board]
-      nextBoard[selected] = number
-      setBoard(nextBoard)
-      setMessage('Nice move')
-      if (nextBoard.every((value, index) => value === solution[index])) {
-        setComplete(true)
-        setMessage('Puzzle complete. Beautiful work!')
-      }
-    } else {
-      setMistakes((value) => value + 1)
-      setMessage('That number does not fit here')
-    }
+  const newChat = () => {
+    setMessages(starterMessages)
+    setInput('')
+    setActiveChat('Новый разговор')
   }
-
-  const erase = () => {
-    if (selected === null || givens[selected] !== 0 || complete) return
-    const nextBoard = [...board]
-    nextBoard[selected] = 0
-    setBoard(nextBoard)
-    setMessage('Square cleared')
-  }
-
-  const giveHint = () => {
-    if (selected === null || givens[selected] !== 0 || complete) {
-      setMessage('Choose an empty square first')
-      return
-    }
-    chooseNumber(solution[selected])
-    setMessage('A little nudge in the right direction')
-  }
-
-  const selectedValue = selected !== null ? board[selected] : null
-  const isRelated = (index) => selected !== null && (Math.floor(index / 9) === Math.floor(selected / 9) || index % 9 === selected % 9 || (Math.floor(index / 27) === Math.floor(selected / 27) && Math.floor((index % 9) / 3) === Math.floor((selected % 9) / 3)))
 
   return (
-    <div className="game-shell">
-      <header className="topbar">
-        <div className="logo"><span className="logo-symbol">9</span><span>quiet<br /><b>grid</b></span></div>
-        <div className="topbar-right"><span className="mini-status"><i></i> Daily puzzle</span><button className="help-button" title="How to play">?</button></div>
-      </header>
+    <div className="chat-app">
+      <aside className="chat-sidebar">
+        <div className="brand"><span className="brand-mark">✦</span><span>nova<span>.</span>ai</span></div>
+        <button className="new-chat" onClick={newChat}><span>＋</span> Новый разговор</button>
+        <div className="side-label">РАЗГОВОРЫ</div>
+        <button className="history-item active" onClick={() => setActiveChat('Новый разговор')}><span>◌</span>{activeChat}</button>
+        <button className="history-item"><span>◷</span>Идеи для проекта</button>
+        <button className="history-item"><span>◷</span>Помощь с React</button>
+        <div className="sidebar-foot"><div className="usage"><div><span>ИСПОЛЬЗОВАНО СЕГОДНЯ</span><b>12 / 50 сообщений</b></div><div className="usage-bar"><i></i></div></div><div className="user-row"><div className="avatar">А</div><div><strong>Алексей</strong><small>Личный аккаунт</small></div><button>···</button></div></div>
+      </aside>
 
-      <main className="game-main">
-        <section className="intro">
-          <div><span className="kicker">SUNDAY, SEPTEMBER 06</span><h1>Take a little<br /><em>quiet time.</em></h1><p>One thoughtful puzzle. No rush.</p></div>
-          <div className="stats"><div><span>TIME</span><strong>{formatTime(seconds)}</strong></div><div><span>MISTAKES</span><strong className={mistakes > 0 ? 'mistake-count' : ''}>{mistakes} <small>/ 3</small></strong></div></div>
-        </section>
-
-        <section className="play-layout">
-          <div className="board-column">
-            <div className="board-wrap">
-              <div className="sudoku-board" aria-label="Sudoku board">
-                {board.map((value, index) => {
-                  const isGiven = givens[index] !== 0
-                  const isSelected = selected === index
-                  const sameNumber = selectedValue !== null && value !== 0 && value === selectedValue
-                  return <button key={index} className={`cell ${isGiven ? 'given' : 'editable'} ${isSelected ? 'selected' : ''} ${isRelated(index) ? 'related' : ''} ${sameNumber ? 'same-number' : ''} ${Math.floor(index / 9) % 3 === 2 ? 'row-break' : ''} ${index % 9 % 3 === 2 ? 'col-break' : ''}`} onClick={() => setSelected(index)} aria-label={`Row ${Math.floor(index / 9) + 1}, column ${(index % 9) + 1}`}><span>{value || ''}</span></button>
-                })}
-              </div>
-              <div className="board-message"><span className={complete ? 'message-dot complete-dot' : 'message-dot'}></span>{message}</div>
-            </div>
-            <div className="number-pad">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((number) => <button key={number} onClick={() => chooseNumber(number)} className={selectedValue === number ? 'number-active' : ''}>{number}</button>)}
-              <button className="erase-button" onClick={erase}>⌫ <span>erase</span></button>
-            </div>
+      <main className="chat-main">
+        <header className="chat-header"><div><span className="online-dot"></span><strong>Nova AI</strong><small>Онлайн и готов помочь</small></div><div className="header-actions"><button title="Поиск">⌕</button><button title="Настройки">⚙</button></div></header>
+        <section className="conversation">
+          <div className="conversation-head"><span className="date-line">СЕГОДНЯ, 10:42</span><h1>Чем займёмся?</h1><p>Спроси что угодно. Я помогу превратить мысли в ясные действия.</p></div>
+          <div className="messages">
+            {messages.map((message) => <div className={`message-row ${message.role}`} key={message.id}><div className="message-avatar">{message.role === 'assistant' ? '✦' : 'А'}</div><div className="message-content"><div className="message-name">{message.role === 'assistant' ? 'Nova' : 'Вы'} <span>{message.time}</span></div><div className="bubble">{message.text}</div></div></div>)}
+            {isThinking && <div className="message-row assistant"><div className="message-avatar">✦</div><div className="message-content"><div className="message-name">Nova <span>печатает...</span></div><div className="bubble typing"><i></i><i></i><i></i></div></div></div>}
+            <div ref={endRef}></div>
           </div>
-
-          <aside className="side-panel">
-            <div className="side-card hint-card"><div className="card-icon">✦</div><div><span className="card-label">NEED A NUDGE?</span><h2>Stuck on a square?</h2><p>We will reveal the right number and keep your flow going.</p><button onClick={giveHint}>Give me a hint <span>→</span></button></div></div>
-            <div className="side-card rules-card"><span className="card-label">THE BASICS</span><h2>Three things to remember</h2><ol><li><b>01</b><span>Each row needs <strong>1–9</strong>, once each.</span></li><li><b>02</b><span>Each column follows the same rule.</span></li><li><b>03</b><span>Every 3×3 box is its own little world.</span></li></ol></div>
-            <button className="new-game" onClick={newGame}><span>↻</span> New puzzle</button>
-          </aside>
         </section>
+        <div className="composer-area"><div className="suggestions"><button onClick={() => sendMessage('Помоги мне составить план на сегодня')}>Составить план <span>↗</span></button><button onClick={() => sendMessage('Объясни сложную тему простыми словами')}>Объяснить тему <span>↗</span></button><button onClick={() => sendMessage('Помоги с кодом React')}>Помочь с кодом <span>↗</span></button></div><div className="composer"><textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendMessage() } }} placeholder="Напишите сообщение..." rows="1" /><div className="composer-tools"><button title="Прикрепить файл">＋</button><span>Enter для отправки</span><button className="send-button" onClick={() => sendMessage()} disabled={!input.trim() || isThinking} title="Отправить">↑</button></div></div><p className="disclaimer">Nova может допускать ошибки. Проверяйте важную информацию.</p></div>
       </main>
-      <footer className="footer"><span>Made for slow mornings</span><span>PUZZLE № {String(puzzleIndex + 1).padStart(3, '0')}</span></footer>
     </div>
   )
 }
